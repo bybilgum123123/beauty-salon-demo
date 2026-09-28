@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.sites-runtime/
+.sites-checkout/
+.env
+.env.*
+!.env.example
+*.log
+site-deploy.tar.gz
