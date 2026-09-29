@@ -36,7 +36,22 @@ function setCategory(category, focus = false) {
     dots.className = 'price-row-dots';
     const amount = document.createElement('span');
     amount.className = 'price-row-price';
-    amount.textContent = price;
+    const match = price.match(/^(від\s+)?([\d ]+)\s*₴$/);
+    if (match) {
+      if (match[1]) {
+        const prefix = document.createElement('small');
+        prefix.className = 'price-prefix';
+        prefix.textContent = 'від';
+        amount.append(prefix);
+      }
+      const number = document.createElement('strong');
+      number.className = 'price-amount';
+      number.textContent = match[2].trim();
+      const currency = document.createElement('small');
+      currency.className = 'price-currency';
+      currency.textContent = '₴';
+      amount.append(number, currency);
+    } else amount.textContent = price;
     row.append(label, dots, amount);
     return row;
   }));
@@ -51,6 +66,39 @@ tabs.forEach((tab, index) => {
   });
 });
 setCategory('nails');
+
+const header = document.querySelector('.site-header');
+const updateHeader = () => header.classList.toggle('is-scrolled', window.scrollY > 12);
+window.addEventListener('scroll', updateHeader, { passive: true });
+updateHeader();
+
+const heroStage = document.querySelector('#hero-stage');
+const heroPortrait = document.querySelector('#hero-image-root');
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const mobileHero = window.matchMedia('(max-width: 760px)');
+let heroTick = 0;
+function updateHeroTurn() {
+  heroTick = 0;
+  if (reducedMotion.matches || mobileHero.matches) {
+    heroPortrait.style.setProperty('--hero-turn', '1');
+    return;
+  }
+  const range = Math.max(1, heroStage.offsetHeight - heroStage.querySelector('.hero').offsetHeight);
+  const progress = Math.min(1, Math.max(0, -heroStage.getBoundingClientRect().top / range));
+  const eased = progress * progress * (3 - 2 * progress);
+  heroPortrait.style.setProperty('--hero-turn', eased.toFixed(4));
+}
+function requestHeroTurn() {
+  if (!heroTick) heroTick = requestAnimationFrame(updateHeroTurn);
+}
+window.addEventListener('scroll', requestHeroTurn, { passive: true });
+window.addEventListener('resize', requestHeroTurn, { passive: true });
+reducedMotion.addEventListener('change', requestHeroTurn);
+mobileHero.addEventListener('change', requestHeroTurn);
+if ('IntersectionObserver' in window) {
+  new IntersectionObserver(([entry]) => heroStage.classList.toggle('is-active', entry.isIntersecting), { rootMargin: '80px' }).observe(heroStage);
+} else heroStage.classList.add('is-active');
+updateHeroTurn();
 
 const menuButton = document.querySelector('.menu-toggle');
 const mobileNav = document.querySelector('.mobile-nav');
@@ -81,16 +129,6 @@ function showReview(index) {
 document.querySelector('.review-prev').addEventListener('click', () => showReview(reviewIndex - 1));
 document.querySelector('.review-next').addEventListener('click', () => showReview(reviewIndex + 1));
 
-const lightbox = document.querySelector('.lightbox');
-document.querySelectorAll('.gallery-item').forEach(item => item.addEventListener('click', () => {
-  lightbox.querySelector('img').src = item.dataset.image;
-  lightbox.querySelector('img').alt = item.querySelector('img').alt;
-  lightbox.querySelector('p').textContent = item.dataset.caption;
-  lightbox.showModal();
-}));
-document.querySelector('.lightbox-close').addEventListener('click', () => lightbox.close());
-lightbox.addEventListener('click', event => { if (event.target === lightbox) lightbox.close(); });
-
 document.querySelector('#booking-form').addEventListener('submit', event => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -106,3 +144,16 @@ if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-mot
   }), { threshold: .08, rootMargin: '0px 0px -25px 0px' });
   document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 } else document.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
+
+const imageReveal = document.querySelector('.image-reveal');
+if (imageReveal) {
+  if ('IntersectionObserver' in window && !reducedMotion.matches) {
+    const imageObserver = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        imageReveal.classList.add('visible');
+        imageObserver.disconnect();
+      }
+    }, { threshold: .18 });
+    imageObserver.observe(imageReveal);
+  } else imageReveal.classList.add('visible');
+}

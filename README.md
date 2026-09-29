@@ -15,9 +15,9 @@ npm run dev
 
 - Тексти, контакти, розділи, послуги та імена майстрів: `index.html`.
 - Ціни й відгуки: об’єкти `priceData` і `reviews` у `script.js`.
-- Кольори, шрифти та розміри: змінні на початку `styles.css`.
+- Кольори, шрифти та розміри: `premium.css`; базові стилі — `styles.css`.
 - Фотографії: каталог `assets/`. Замінюйте файли з тими самими назвами або змінюйте шляхи в `index.html` та `src/enhancements.jsx`.
-- Анімації та галерея: `src/enhancements.jsx`, стилі — `enhancements.css`. Компоненти в `src/reactbits/` адаптовані з [React Bits](https://reactbits.dev/); умови використання збережені в `src/reactbits/LICENSE.md`.
+- Легка взаємодія карток послуг: `src/enhancements.jsx`, стилі — `enhancements.css`. Компонент у `src/reactbits/` адаптований з [React Bits](https://reactbits.dev/); умови використання збережені в `src/reactbits/LICENSE.md`.
 
 ## Перед публікацією для реального салону
 
