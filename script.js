@@ -9,15 +9,21 @@ const priceData = {
 const tabs = [...document.querySelectorAll('.price-tab')];
 const pricePanel = document.querySelector('.price-panel');
 const priceRows = document.querySelector('.price-rows');
+const priceTabList = document.querySelector('.price-tabs');
+const compactPrices = matchMedia('(max-width: 760px)');
+const setTabOrientation = () => priceTabList.setAttribute('aria-orientation', compactPrices.matches ? 'horizontal' : 'vertical');
+compactPrices.addEventListener('change', setTabOrientation);
+setTabOrientation();
 function setCategory(category, focus = false) {
   const data = priceData[category];
   const index = Object.keys(priceData).indexOf(category);
+  pricePanel.setAttribute('aria-labelledby', `tab-${category}`);
   tabs.forEach(tab => {
     const active = tab.dataset.category === category;
     tab.classList.toggle('active', active);
     tab.setAttribute('aria-selected', String(active));
     tab.tabIndex = active ? 0 : -1;
-    if (active && focus) tab.focus();
+    if (active && focus) tab.focus({ preventScroll: true });
   });
   pricePanel.querySelector('h3').textContent = data.title;
   pricePanel.querySelector('.price-panel-top span:last-child').textContent = `0${index + 1} / 05`;
@@ -34,6 +40,7 @@ function setCategory(category, focus = false) {
     label.append(title, detail);
     const dots = document.createElement('span');
     dots.className = 'price-row-dots';
+    dots.setAttribute('aria-hidden', 'true');
     const amount = document.createElement('span');
     amount.className = 'price-row-price';
     const match = price.match(/^(від\s+)?([\d ]+)\s*₴$/);
@@ -59,58 +66,139 @@ function setCategory(category, focus = false) {
 tabs.forEach((tab, index) => {
   tab.addEventListener('click', () => setCategory(tab.dataset.category));
   tab.addEventListener('keydown', event => {
-    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+    const arrows = compactPrices.matches ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown'];
+    if (![...arrows, 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === arrows[1] ? 1 : -1) + tabs.length) % tabs.length;
     setCategory(tabs[next].dataset.category, true);
   });
 });
 setCategory('nails');
 
 const header = document.querySelector('.site-header');
-const updateHeader = () => header.classList.toggle('is-scrolled', window.scrollY > 12);
-window.addEventListener('scroll', updateHeader, { passive: true });
-updateHeader();
-
 const heroStage = document.querySelector('#hero-stage');
-const heroPortrait = document.querySelector('#hero-image-root');
+const hero = heroStage.querySelector('.hero');
+const heroVideo = heroStage.querySelector('.hero-video');
+const heroVideoSource = heroVideo.querySelector('source');
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const mobileHero = window.matchMedia('(max-width: 760px)');
+const motionButton = document.querySelector('.hero-motion-toggle');
+const saveData = navigator.connection?.saveData;
+let videoPausedByUser = false;
+const updateHeader = () => header.classList.toggle('is-scrolled', heroStage.getBoundingClientRect().bottom <= header.offsetHeight + 2);
 let heroTick = 0;
-function updateHeroTurn() {
+function updateHeroMotion() {
   heroTick = 0;
+  updateHeader();
   if (reducedMotion.matches || mobileHero.matches) {
-    heroPortrait.style.setProperty('--hero-turn', '1');
+    heroStage.style.setProperty('--hero-progress', '0');
     return;
   }
-  const range = Math.max(1, heroStage.offsetHeight - heroStage.querySelector('.hero').offsetHeight);
+  const range = Math.max(1, heroStage.offsetHeight - hero.offsetHeight);
   const progress = Math.min(1, Math.max(0, -heroStage.getBoundingClientRect().top / range));
   const eased = progress * progress * (3 - 2 * progress);
-  heroPortrait.style.setProperty('--hero-turn', eased.toFixed(4));
+  heroStage.style.setProperty('--hero-progress', eased.toFixed(4));
 }
-function requestHeroTurn() {
-  if (!heroTick) heroTick = requestAnimationFrame(updateHeroTurn);
+function requestHeroMotion() {
+  if (!heroTick) heroTick = requestAnimationFrame(updateHeroMotion);
 }
-window.addEventListener('scroll', requestHeroTurn, { passive: true });
-window.addEventListener('resize', requestHeroTurn, { passive: true });
-reducedMotion.addEventListener('change', requestHeroTurn);
-mobileHero.addEventListener('change', requestHeroTurn);
+window.addEventListener('scroll', requestHeroMotion, { passive: true });
+window.addEventListener('resize', requestHeroMotion, { passive: true });
+reducedMotion.addEventListener('change', requestHeroMotion);
+mobileHero.addEventListener('change', requestHeroMotion);
+function syncHeroVideo() {
+  motionButton.hidden = reducedMotion.matches || saveData || !heroStage.classList.contains('video-ready');
+  if (videoPausedByUser || reducedMotion.matches || saveData || document.hidden || !heroStage.classList.contains('is-active') || !heroVideoSource.src) {
+    heroVideo.pause();
+  } else {
+    heroVideo.play().catch(() => {});
+  }
+}
+function loadHeroVideo() {
+  if (reducedMotion.matches || saveData || heroVideoSource.src) return;
+  heroVideoSource.src = heroVideoSource.dataset.src;
+  heroVideo.load();
+  syncHeroVideo();
+}
 if ('IntersectionObserver' in window) {
-  new IntersectionObserver(([entry]) => heroStage.classList.toggle('is-active', entry.isIntersecting), { rootMargin: '80px' }).observe(heroStage);
-} else heroStage.classList.add('is-active');
-updateHeroTurn();
+  new IntersectionObserver(([entry]) => {
+    heroStage.classList.toggle('is-active', entry.isIntersecting);
+    document.body.classList.toggle('hero-in-view', entry.isIntersecting);
+    syncHeroVideo();
+  }, { rootMargin: '0px' }).observe(hero);
+} else { heroStage.classList.add('is-active'); document.body.classList.add('hero-in-view'); }
+reducedMotion.addEventListener('change', () => { loadHeroVideo(); syncHeroVideo(); });
+document.addEventListener('visibilitychange', syncHeroVideo);
+heroVideo.addEventListener('loadeddata', () => { heroStage.classList.add('video-ready'); syncHeroVideo(); });
+const showVideoFallback = () => { heroStage.classList.remove('video-ready'); motionButton.hidden = true; };
+heroVideo.addEventListener('error', showVideoFallback);
+heroVideoSource.addEventListener('error', showVideoFallback);
+motionButton.addEventListener('click', () => {
+  videoPausedByUser = !videoPausedByUser;
+  motionButton.textContent = videoPausedByUser ? 'Відтворити' : 'Пауза';
+  motionButton.setAttribute('aria-pressed', String(videoPausedByUser));
+  motionButton.setAttribute('aria-label', videoPausedByUser ? 'Відтворити фонове відео' : 'Призупинити фонове відео');
+  syncHeroVideo();
+});
+updateHeroMotion();
+requestAnimationFrame(() => requestAnimationFrame(loadHeroVideo));
 
 const menuButton = document.querySelector('.menu-toggle');
 const mobileNav = document.querySelector('.mobile-nav');
-function closeMenu() { mobileNav.hidden = true; menuButton.setAttribute('aria-expanded', 'false'); menuButton.setAttribute('aria-label', 'Відкрити меню'); }
+const pageContent = [document.querySelector('main'), document.querySelector('footer'), document.querySelector('.mobile-book')];
+let menuScrollPosition = 0;
+function closeMenu({ restoreFocus = true } = {}) {
+  if (mobileNav.hidden) return;
+  mobileNav.hidden = true;
+  menuButton.setAttribute('aria-expanded', 'false');
+  menuButton.setAttribute('aria-label', 'Відкрити меню');
+  header.classList.remove('menu-open');
+  document.body.classList.remove('menu-open');
+  document.body.style.top = '';
+  pageContent.forEach(element => { element.inert = false; });
+  window.scrollTo({ top: menuScrollPosition, behavior: 'instant' });
+  if (restoreFocus) menuButton.focus({ preventScroll: true });
+}
 menuButton.addEventListener('click', () => {
-  mobileNav.hidden = !mobileNav.hidden;
-  const open = !mobileNav.hidden;
-  menuButton.setAttribute('aria-expanded', String(open));
-  menuButton.setAttribute('aria-label', open ? 'Закрити меню' : 'Відкрити меню');
+  if (!mobileNav.hidden) { closeMenu(); return; }
+  menuScrollPosition = window.scrollY;
+  document.body.style.top = `-${menuScrollPosition}px`;
+  document.body.classList.add('menu-open');
+  header.classList.add('menu-open');
+  mobileNav.hidden = false;
+  menuButton.setAttribute('aria-expanded', 'true');
+  menuButton.setAttribute('aria-label', 'Закрити меню');
+  pageContent.forEach(element => { element.inert = true; });
+  mobileNav.querySelector('a').focus({ preventScroll: true });
 });
-mobileNav.querySelectorAll('a').forEach(link => link.addEventListener('click', closeMenu));
-document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenu(); });
+mobileNav.querySelectorAll('a').forEach(link => link.addEventListener('click', () => {
+  closeMenu({ restoreFocus: false });
+  const target = document.querySelector(link.getAttribute('href'));
+  target.setAttribute('tabindex', '-1');
+  target.focus({ preventScroll: true });
+  target.addEventListener('blur', () => target.removeAttribute('tabindex'), { once: true });
+}));
+document.addEventListener('keydown', event => {
+  if (mobileNav.hidden) return;
+  if (event.key === 'Escape') { closeMenu(); return; }
+  if (event.key !== 'Tab') return;
+  const focusable = [menuButton, ...mobileNav.querySelectorAll('a')];
+  const first = focusable[0], last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+});
+document.addEventListener('click', event => { if (!mobileNav.hidden && !header.contains(event.target)) closeMenu(); });
+mobileHero.addEventListener('change', () => { if (!mobileHero.matches) closeMenu({ restoreFocus: false }); });
+if ('IntersectionObserver' in window) {
+  const bookingVisible = new Set();
+  const bookingObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) bookingVisible.add(entry.target); else bookingVisible.delete(entry.target);
+    });
+    document.body.classList.toggle('booking-in-view', bookingVisible.size > 0);
+  });
+  [document.querySelector('#booking'), document.querySelector('footer')].forEach(element => bookingObserver.observe(element));
+}
 
 const reviews = [
   ['«Тут усе продумано до дрібниць: від атмосфери до результату. Манікюр носиться чудово, а після візиту просто гарний настрій.»', 'Олена К.'],
@@ -129,25 +217,59 @@ function showReview(index) {
 document.querySelector('.review-prev').addEventListener('click', () => showReview(reviewIndex - 1));
 document.querySelector('.review-next').addEventListener('click', () => showReview(reviewIndex + 1));
 
-document.querySelector('#booking-form').addEventListener('submit', event => {
+const bookingForm = document.querySelector('#booking-form');
+const phoneInput = bookingForm.querySelector('#client-phone');
+const nameInput = bookingForm.querySelector('#client-name');
+const phoneError = document.querySelector('#phone-error');
+const formStatus = bookingForm.querySelector('.form-status');
+function validatePhone() {
+  const digits = phoneInput.value.replace(/\D/g, '');
+  const message = phoneInput.value && (digits.length < 10 || digits.length > 15) ? 'Введіть номер телефону: від 10 до 15 цифр.' : '';
+  phoneInput.setCustomValidity(message);
+  phoneError.textContent = message;
+  phoneInput.setAttribute('aria-invalid', String(Boolean(message)));
+}
+phoneInput.addEventListener('input', validatePhone);
+nameInput.addEventListener('input', () => {
+  nameInput.setCustomValidity(nameInput.value && !nameInput.value.trim() ? 'Вкажіть ваше ім’я.' : '');
+  nameInput.removeAttribute('aria-invalid');
+});
+bookingForm.addEventListener('invalid', event => {
+  event.target.setAttribute('aria-invalid', 'true');
+  formStatus.classList.add('is-error');
+  formStatus.textContent = 'Перевірте ім’я, номер телефону та оберіть послугу.';
+}, true);
+bookingForm.querySelector('select').addEventListener('change', event => event.target.removeAttribute('aria-invalid'));
+bookingForm.addEventListener('submit', event => {
   event.preventDefault();
   const form = event.currentTarget;
+  validatePhone();
+  nameInput.setCustomValidity(nameInput.value.trim() ? '' : 'Вкажіть ваше ім’я.');
   if (!form.reportValidity()) return;
-  form.querySelector('.form-status').textContent = 'Дякуємо! Це демонстраційна форма — дані не були надіслані.';
+  formStatus.classList.remove('is-error');
+  formStatus.textContent = 'Демо-запис готовий. Дякуємо! Ваші дані не збережено й не надіслано.';
   form.reset();
+  form.querySelectorAll('[aria-invalid]').forEach(input => input.removeAttribute('aria-invalid'));
+  phoneError.textContent = '';
 });
+bookingForm.querySelector('button[type="submit"]').disabled = false;
 document.querySelector('#year').textContent = new Date().getFullYear();
 
 if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
   const observer = new IntersectionObserver(entries => entries.forEach(entry => {
     if (entry.isIntersecting) { entry.target.classList.add('visible'); observer.unobserve(entry.target); }
   }), { threshold: .08, rootMargin: '0px 0px -25px 0px' });
-  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+  document.querySelectorAll('.reveal').forEach(el => {
+    if (el.getBoundingClientRect().top > innerHeight) el.classList.add('is-pending');
+    else el.classList.add('visible');
+    observer.observe(el);
+  });
 } else document.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
 
 const imageReveal = document.querySelector('.image-reveal');
 if (imageReveal) {
   if ('IntersectionObserver' in window && !reducedMotion.matches) {
+    imageReveal.classList.add('is-pending');
     const imageObserver = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting) {
         imageReveal.classList.add('visible');
@@ -157,3 +279,6 @@ if (imageReveal) {
     imageObserver.observe(imageReveal);
   } else imageReveal.classList.add('visible');
 }
+reducedMotion.addEventListener('change', () => {
+  if (reducedMotion.matches) document.querySelectorAll('.reveal,.image-reveal').forEach(element => element.classList.add('visible'));
+});
